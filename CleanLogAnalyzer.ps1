@@ -1,6 +1,6 @@
 # ======================================================================
-# SIMPLE WINDOWS LOG ANALYZER - CLEAN VERSION
-# No errors, No corrupted characters
+# WINDOWS LOG ANALYZER - CLEAN VERSION (ERROR FIXED)
+# No HTML parsing errors, Simple and Working
 # ======================================================================
 
 # Clear screen
@@ -81,7 +81,7 @@ Write-Host "Days: $days" -ForegroundColor Yellow
 
 # Create output folder on Desktop
 $desktopPath = [Environment]::GetFolderPath("Desktop")
-$folderName = "LogReport_$($StartTime.ToString('yyyyMMdd'))_to_$($EndTime.ToString('yyyyMMdd'))"
+$folderName = "LogReport_$($StartTime.ToString('yyyyMMdd'))_$($EndTime.ToString('yyyyMMdd'))"
 $outputPath = "$desktopPath\$folderName"
 
 if (Test-Path $outputPath) {
@@ -165,17 +165,17 @@ foreach ($event in $eventsToCheck) {
 # Generate reports
 Write-Host "`nGENERATING REPORTS..." -ForegroundColor Cyan
 
-# 1. CSV Report
+# 1. CSV Report (Main Report)
 if ($allResults.Count -gt 0) {
     $csvFile = "$outputPath\LogAnalysis_Detailed.csv"
     $allResults | Export-Csv -Path $csvFile -NoTypeInformation -Encoding UTF8
     Write-Host "✓ CSV Report: $csvFile" -ForegroundColor Green
     
-    # 2. HTML Report
+    # 2. Create Simple HTML Report (FIXED VERSION)
     $htmlFile = "$outputPath\LogAnalysis_Report.html"
     
-    # Build HTML
-    $html = @"
+    # Build HTML content piece by piece (to avoid parsing errors)
+    $htmlContent = @"
 <!DOCTYPE html>
 <html>
 <head>
@@ -198,11 +198,16 @@ if ($allResults.Count -gt 0) {
     
     <div class="summary">
         <h3>Analysis Summary</h3>
-        <p><strong>Date Range:</strong> $($StartTime.ToString('dd-MM-yyyy HH:mm')) to $($EndTime.ToString('dd-MM-yyyy HH:mm'))</p>
-        <p><strong>Computer:</strong> $env:COMPUTERNAME</p>
-        <p><strong>Analyst:</strong> $env:USERNAME</p>
-        <p><strong>Generated:</strong> $(Get-Date -Format 'dd-MM-yyyy HH:mm:ss')</p>
-        <p><strong>Total Events Found:</strong> <span class="count">$($allResults.Count)</span></p>
+"@
+
+    # Add summary details
+    $htmlContent += "<p><strong>Date Range:</strong> " + $StartTime.ToString('dd-MM-yyyy HH:mm') + " to " + $EndTime.ToString('dd-MM-yyyy HH:mm') + "</p>"
+    $htmlContent += "<p><strong>Computer:</strong> $env:COMPUTERNAME</p>"
+    $htmlContent += "<p><strong>Analyst:</strong> $env:USERNAME</p>"
+    $htmlContent += "<p><strong>Generated:</strong> $(Get-Date -Format 'dd-MM-yyyy HH:mm:ss')</p>"
+    $htmlContent += "<p><strong>Total Events Found:</strong> <span class='count'>$($allResults.Count)</span></p>"
+    
+    $htmlContent += @"
     </div>
     
     <h2>Event Summary</h2>
@@ -210,13 +215,13 @@ if ($allResults.Count -gt 0) {
         <tr><th>Event Type</th><th>Event ID</th><th>Count</th></tr>
 "@
 
-    # Add summary
+    # Add summary rows
     $summary = $allResults | Group-Object EventName
     foreach ($group in $summary) {
-        $html += "<tr><td>$($group.Name)</td><td>$($group.Group[0].EventID)</td><td class='count'>$($group.Count)</td></tr>"
+        $htmlContent += "<tr><td>$($group.Name)</td><td>$($group.Group[0].EventID)</td><td class='count'>$($group.Count)</td></tr>"
     }
 
-    $html += @"
+    $htmlContent += @"
     </table>
     
     <h2>Detailed Events (First 50)</h2>
@@ -239,20 +244,21 @@ if ($allResults.Count -gt 0) {
         if ($details -eq "N/A") { $details = $row.Device }
         if ($details -eq "N/A") { $details = $row.Process }
         
-        $html += "<tr>"
-        $html += "<td>$($row.Time)</td>"
-        $html += "<td>$($row.EventName)</td>"
-        $html += "<td>$($row.User)</td>"
-        $html += "<td>$details</td>"
-        $html += "<td>$($row.Computer)</td>"
-        $html += "</tr>"
+        $htmlContent += "<tr>"
+        $htmlContent += "<td>$($row.Time)</td>"
+        $htmlContent += "<td>$($row.EventName)</td>"
+        $htmlContent += "<td>$($row.User)</td>"
+        $htmlContent += "<td>$details</td>"
+        $htmlContent += "<td>$($row.Computer)</td>"
+        $htmlContent += "</tr>"
     }
 
     if ($allResults.Count -gt 50) {
-        $html += "<tr><td colspan='5'>... and $($allResults.Count - 50) more events in CSV file</td></tr>"
+        $remaining = $allResults.Count - 50
+        $htmlContent += "<tr><td colspan='5'>... and $remaining more events in CSV file</td></tr>"
     }
 
-    $html += @"
+    $htmlContent += @"
     </table>
     
     <div class="footer">
@@ -265,11 +271,13 @@ if ($allResults.Count -gt 0) {
 </html>
 "@
 
-    $html | Out-File -FilePath $htmlFile -Encoding UTF8
+    # Save HTML file
+    $htmlContent | Out-File -FilePath $htmlFile -Encoding UTF8
     Write-Host "✓ HTML Report: $htmlFile" -ForegroundColor Green
     
     # 3. Text Summary
     $textFile = "$outputPath\Analysis_Summary.txt"
+    
     $textContent = @"
 ================================================
 WINDOWS LOG ANALYSIS - SUMMARY REPORT
@@ -301,6 +309,17 @@ TOP 10 FILE ACCESS EVENTS:
     $fileAccess = $allResults | Where-Object { $_.EventID -eq 4663 } | Sort-Object Time -Descending | Select-Object -First 10
     foreach ($event in $fileAccess) {
         $textContent += "$($event.Time) | $($event.User) | $($event.FilePath)`n"
+    }
+
+    $textContent += @"
+
+TOP 10 USB DEVICE CONNECTIONS:
+================================================
+"@
+
+    $usbEvents = $allResults | Where-Object { $_.EventID -eq 6416 } | Sort-Object Time -Descending | Select-Object -First 10
+    foreach ($event in $usbEvents) {
+        $textContent += "$($event.Time) | $($event.User) | $($event.Device)`n"
     }
 
     $textContent += @"
@@ -345,7 +364,7 @@ Write-Host "`nReports saved to: $outputPath" -ForegroundColor Cyan
 
 if ($allResults.Count -gt 0) {
     Write-Host "Events found: $($allResults.Count)" -ForegroundColor White
-    Write-Host "Files created:" -ForegroundColor Yellow
+    Write-Host "`nFiles created:" -ForegroundColor Yellow
     Write-Host "  1. LogAnalysis_Report.html (Open in browser)" -ForegroundColor White
     Write-Host "  2. LogAnalysis_Detailed.csv (Open in Excel)" -ForegroundColor White
     Write-Host "  3. Analysis_Summary.txt (Quick summary)" -ForegroundColor White
