@@ -18,3 +18,12 @@ Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4663; StartTime=$start} |
   Select-Object TimeCreated, Id, Message |
   Out-File .\usb_file_events.txt -Encoding utf8
 ```
+
+### Windows Registry Artifacts (FOR USB)
+```
+SYSTEM\CurrentControlSet\Enum\USBSTOR
+
+SYSTEM\MountedDevices
+
+NTUSER.DAT → Software\Microsoft\Windows\CurrentVersion\Explorer\MountPoints2
+```
